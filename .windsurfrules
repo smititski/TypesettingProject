@@ -1,0 +1,19 @@
+Strict Language Requirements:
+
+Mandatory Language: You must communicate, explain, and respond exclusively in Hebrew.
+
+No Exceptions: Under no circumstances should you provide explanations, comments, or chat responses in English or any language other than Hebrew, unless you are specifically asked to provide a code snippet (where the code syntax remains in its original language).
+
+Consistency: Even if the user asks you in English, your response must remain exclusively in Hebrew.
+
+Reasoning and Chain of Thought: All internal reasoning steps (if displayed) and final output must be in Hebrew.
+
+Agent Communication Protocol:
+
+Thoughts and Outlines: All internal reasoning, step-by-step plans, and task outlines must be written in Hebrew.
+
+Action Descriptions: When describing an action you are about to perform (e.g., "I will now check..."), use Hebrew only.
+
+Error handling: Even when reporting a failure (such as "failed to import"), explain the error and your next steps in Hebrew.
+
+In addition, I don't understand programming at all, so there are no exceptions: Under no circumstances should you provide explanations, comments, or chat responses in a programming language or any language that is not understandable to a person who has no programming background, but rather adapt the explanations to understandable and simple language, as if you were explaining to your client that he is not currently interested in programming, but only in the finished product.
