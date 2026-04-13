@@ -44,14 +44,15 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(EditorViewModel.Glyphs) || e.PropertyName == nameof(EditorViewModel.CurrentPage))
         {
             var vm = (EditorViewModel)DataContext;
-            DrawGlyphs(vm.Glyphs, vm.CurrentPage?.FootnoteA, vm.CurrentPage?.FootnoteB, vm.CurrentPage?.FootnoteC);
+            DrawGlyphs(vm.Glyphs, vm.CurrentPage?.FootnoteA, vm.CurrentPage?.FootnoteB, vm.CurrentPage?.FootnoteC, 
+                vm.CurrentPage?.ChapterTitle ?? vm.ChapterTitle, vm.CurrentPage?.PageNumber ?? 1);
         }
     }
 
     /// <summary>
     /// Draw glyphs on the canvas with footnotes, justify alignment, and Torah spacing.
     /// </summary>
-    public void DrawGlyphs(IEnumerable<GlyphInfo> glyphs, List<string> footnotesA = null, List<string> footnotesB = null, List<string> footnotesC = null)
+    public void DrawGlyphs(IEnumerable<GlyphInfo> glyphs, List<string> footnotesA = null, List<string> footnotesB = null, List<string> footnotesC = null, string chapterTitle = "", int pageNumber = 1)
     {
         // Clear existing children
         GlyphCanvas.Children.Clear();
@@ -63,19 +64,51 @@ public partial class MainWindow : Window
         if (glyphList.Count == 0)
             return;
 
+        double fontSize = 24;
+        double lineHeight = fontSize * 1.7; // מרווח תורני - 1.7 מגודל הפונט
+        double startY = 80; // שמירת מקום לכותרת עליונה
+        double currentY = startY;
+        double pageWidth = 500;
+        double rightMargin = 30;
+        double leftMargin = 30;
+
+        // ציור כותרת עליונה עם שם הפרק
+        if (!string.IsNullOrEmpty(chapterTitle))
+        {
+            var headerBlock = new System.Windows.Controls.TextBlock
+            {
+                Text = chapterTitle,
+                FontSize = 14,
+                FontFamily = new System.Windows.Media.FontFamily("Frank Ruehl"),
+                Foreground = System.Windows.Media.Brushes.DarkGray,
+                FlowDirection = System.Windows.FlowDirection.RightToLeft,
+                FontWeight = System.Windows.FontWeights.Bold
+            };
+            Canvas.SetRight(headerBlock, rightMargin);
+            Canvas.SetTop(headerBlock, 20);
+            GlyphCanvas.Children.Add(headerBlock);
+        }
+
+        // ציור מספר עמוד בפינה הימנית-תחתונה - ימוקם בסוף העמוד
+        var pageNumberBlock = new System.Windows.Controls.TextBlock
+        {
+            Text = pageNumber.ToString(),
+            FontSize = 16,
+            FontFamily = new System.Windows.Media.FontFamily("Frank Ruehl"),
+            Foreground = System.Windows.Media.Brushes.Black,
+            FlowDirection = System.Windows.FlowDirection.RightToLeft,
+            FontWeight = System.Windows.FontWeights.Bold
+        };
+        // מיקום בתחתית העמוד - יעודכן בסוף הפונקציה לפי הגובה האמיתי
+        GlyphCanvas.Children.Add(pageNumberBlock);
+        // שמירת התייחסות לעדכון מיקום מאוחר יותר
+        System.Windows.Controls.TextBlock savedPageNumberBlock = pageNumberBlock;
+
         // קיבוץ גליפים לפי שורות (לפי ערך Y)
         var lines = glyphList
             .GroupBy(g => Math.Round(g.Y / 10.0) * 10)
             .OrderBy(g => g.Key)
             .ToList();
-
-        double fontSize = 24;
-        double lineHeight = fontSize * 1.7; // מרווח תורני - 1.7 מגודל הפונט
-        double startY = 50;
-        double currentY = startY;
-        double pageWidth = 500;
-        double rightMargin = 30;
-        double leftMargin = 30;
 
         // רינדור הטקסט הראשי עם Justify
         // קודם כל נחשב את כל השורות
@@ -186,11 +219,16 @@ public partial class MainWindow : Window
         currentY = RenderFootnoteSection(footnotesC, currentY, lineHeight, fontSize * 0.85, 
             "הערות נוספות", System.Windows.Media.Brushes.DarkOrange, leftMargin, pageWidth - rightMargin);
         
+        // עדכון מיקום מספר העמוד בתחתית העמוד האמיתית
+        double finalHeight = Math.Max(700, currentY + 50);
+        Canvas.SetRight(savedPageNumberBlock, rightMargin);
+        Canvas.SetTop(savedPageNumberBlock, finalHeight - 40);
+        
         // Force layout update
         GlyphCanvas.InvalidateVisual();
 
         // Update canvas size
-        GlyphCanvas.Height = Math.Max(700, currentY + 50);
+        GlyphCanvas.Height = finalHeight;
         GlyphCanvas.Width = pageWidth + leftMargin + rightMargin;
     }
     
@@ -306,6 +344,18 @@ public partial class MainWindow : Window
         };
         
         double currentX = rightMargin;
+        
+        // הוספת מספר ההערה בתחילה
+        var numberBlock = new System.Windows.Controls.TextBlock
+        {
+            Text = noteNumber + ". ",
+            FontSize = fontSize,
+            FontFamily = new System.Windows.Media.FontFamily("Frank Ruehl"),
+            Foreground = color,
+            FontWeight = System.Windows.FontWeights.Bold,
+            Margin = new System.Windows.Thickness(4, 0, 0, 0)
+        };
+        panel.Children.Add(numberBlock);
         
         // אם יש מילה ראשונה מיוחדת - מודגשת
         if (!string.IsNullOrEmpty(prefix))

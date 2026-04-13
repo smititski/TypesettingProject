@@ -13,6 +13,11 @@ namespace UI_Application.Models
         public int PageNumber { get; set; }
 
         /// <summary>
+        /// כותרת הפרק או הספר (מופיעה בכותרת העליונה של העמוד)
+        /// </summary>
+        public string ChapterTitle { get; set; } = string.Empty;
+
+        /// <summary>
         /// התוכן הראשי שיישלח למנוע העימוד (C++)
         /// </summary>
         public string MainContent { get; set; } = string.Empty;

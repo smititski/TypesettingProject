@@ -29,6 +29,7 @@ public class EditorViewModel : INotifyPropertyChanged
     private ObservableCollection<string> _extractedFootnotesA = new();
     private ObservableCollection<string> _extractedFootnotesB = new();
     private ObservableCollection<string> _extractedFootnotesC = new();
+    private string _chapterTitle = string.Empty;
 
     /// <summary>
     /// Status message for the StatusBar.
@@ -112,6 +113,19 @@ public class EditorViewModel : INotifyPropertyChanged
         private set
         {
             _extractedFootnotesC = value;
+            OnPropertyChanged();
+        }
+    }
+    
+    /// <summary>
+    /// Chapter or book title for header display.
+    /// </summary>
+    public string ChapterTitle
+    {
+        get => _chapterTitle;
+        set
+        {
+            _chapterTitle = value;
             OnPropertyChanged();
         }
     }
