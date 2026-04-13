@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using UI_Application.ViewModels;
 using UI_Application.Services;
+using UI_Application.Models;
 
 namespace UI_Application.Views;
 
@@ -44,8 +45,8 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(EditorViewModel.Glyphs) || e.PropertyName == nameof(EditorViewModel.CurrentPage))
         {
             var vm = (EditorViewModel)DataContext;
-            DrawGlyphs(vm.Glyphs, vm.CurrentPage?.FootnoteA, vm.CurrentPage?.FootnoteB, vm.CurrentPage?.FootnoteC, 
-                vm.CurrentPage?.ChapterTitle ?? vm.ChapterTitle, vm.CurrentPage?.PageNumber ?? 1);
+            DrawGlyphs(vm.Glyphs, vm.CurrentPage?.AllFootnotesA, vm.CurrentPage?.AllFootnotesB, vm.CurrentPage?.AllFootnotesC, 
+                vm.CurrentPage?.BookName ?? vm.ChapterTitle, vm.CurrentPage?.PageNumber ?? 1);
         }
     }
 
@@ -230,6 +231,446 @@ public partial class MainWindow : Window
         // Update canvas size
         GlyphCanvas.Height = finalHeight;
         GlyphCanvas.Width = pageWidth + leftMargin + rightMargin;
+    }
+    
+    /// <summary>
+    /// מרנדר עמוד דו-טורי מלא לפי PageModel החדש
+    /// </summary>
+    public void DrawTwoColumnPage(PageModel page)
+    {
+        if (page == null) return;
+        
+        GlyphCanvas.Children.Clear();
+        
+        // מידות העמוד
+        double pageWidth = page.PageWidth;
+        double columnWidth = page.ColumnWidth;
+        double columnGap = page.ColumnGap;
+        double rightMargin = page.MarginOuter;
+        double leftMargin = page.MarginOuter;
+        
+        // מיקום התחלתי
+        double currentY = 20;
+        
+        // ═══════════════════════════════════════════════════════════
+        // 1. מספר עמוד (פינה שמאלית עליונה)
+        // ═══════════════════════════════════════════════════════════
+        var pageNumberBlock = new TextBlock
+        {
+            Text = page.PageNumber.ToString(),
+            FontSize = 10,
+            FontFamily = new FontFamily("Frank Ruehl CLM"),
+            Foreground = Brushes.Gray,
+            FlowDirection = FlowDirection.RightToLeft
+        };
+        Canvas.SetLeft(pageNumberBlock, rightMargin);
+        Canvas.SetTop(pageNumberBlock, currentY);
+        GlyphCanvas.Children.Add(pageNumberBlock);
+        
+        // ═══════════════════════════════════════════════════════════
+        // 2. כותרת רצה (Running Header)
+        // ═══════════════════════════════════════════════════════════
+        currentY += 25;
+        DrawRunningHeader(page, currentY, pageWidth, rightMargin);
+        currentY += 20;
+        
+        // ═══════════════════════════════════════════════════════════
+        // 3. טקסט ראשי — שני טורים
+        // ═══════════════════════════════════════════════════════════
+        double mainTextY = currentY;
+        double rightColumnX = rightMargin;
+        double leftColumnX = rightMargin + columnWidth + columnGap;
+        
+        // טור ימין
+        double rightColumnBottom = RenderTextColumn(
+            page.MainContentColumnRight,
+            rightColumnX,
+            mainTextY,
+            columnWidth,
+            page.MainLineHeight,
+            16, // גודל פונט ראשי
+            true); // justified
+        
+        // טור שמאל
+        double leftColumnBottom = RenderTextColumn(
+            page.MainContentColumnLeft,
+            leftColumnX,
+            mainTextY,
+            columnWidth,
+            page.MainLineHeight,
+            16,
+            true);
+        
+        // הגדרת הגובה האחרון של הטקסט הראשי
+        currentY = Math.Max(rightColumnBottom, leftColumnBottom) + page.SeparatorHeight;
+        
+        // ═══════════════════════════════════════════════════════════
+        // 4. הערות מערכת 1 — שני טורים, run-on
+        // ═══════════════════════════════════════════════════════════
+        if (page.AllFootnotesA?.Count > 0)
+        {
+            currentY = RenderFootnoteSectionTwoColumn(
+                page.FootnoteATitle,
+                page.AllFootnotesA,
+                currentY,
+                pageWidth,
+                rightMargin,
+                columnWidth,
+                columnGap,
+                13, // גודל כותרת
+                12, // גודל גוף
+                Brushes.Black,
+                "א"); // סימון אותיות עבריות
+        }
+        
+        // ═══════════════════════════════════════════════════════════
+        // 5. הערות מערכת 2 — שני טורים, run-on
+        // ═══════════════════════════════════════════════════════════
+        if (page.AllFootnotesB?.Count > 0)
+        {
+            currentY = RenderFootnoteSectionTwoColumn(
+                page.FootnoteBTitle,
+                page.AllFootnotesB,
+                currentY,
+                pageWidth,
+                rightMargin,
+                columnWidth,
+                columnGap,
+                13,
+                12,
+                Brushes.Black,
+                "1"); // סימון מספרים
+        }
+        
+        // ═══════════════════════════════════════════════════════════
+        // 6. הערות מערכת 3 — שני טורים, run-on
+        // ═══════════════════════════════════════════════════════════
+        if (page.AllFootnotesC?.Count > 0)
+        {
+            currentY = RenderFootnoteSectionTwoColumn(
+                page.FootnoteCTitle,
+                page.AllFootnotesC,
+                currentY,
+                pageWidth,
+                rightMargin,
+                columnWidth,
+                columnGap,
+                13,
+                12,
+                Brushes.Black,
+                "*"); // סימון סימנים
+        }
+        
+        // עדכון גודל הקנבס
+        GlyphCanvas.Width = pageWidth;
+        GlyphCanvas.Height = Math.Max(page.PageHeight, currentY + 50);
+        GlyphCanvas.InvalidateVisual();
+    }
+    
+    /// <summary>
+    /// מצייר כותרת רצה בראש העמוד
+    /// </summary>
+    private void DrawRunningHeader(PageModel page, double y, double pageWidth, double margin)
+    {
+        // חלק ימין
+        if (!string.IsNullOrEmpty(page.RunningHeaderRight))
+        {
+            var rightBlock = new TextBlock
+            {
+                Text = page.RunningHeaderRight,
+                FontSize = 11,
+                FontFamily = new FontFamily("Frank Ruehl CLM"),
+                Foreground = Brushes.DarkGray,
+                FlowDirection = FlowDirection.RightToLeft
+            };
+            Canvas.SetRight(rightBlock, margin);
+            Canvas.SetTop(rightBlock, y);
+            GlyphCanvas.Children.Add(rightBlock);
+        }
+        
+        // חלק מרכזי
+        if (!string.IsNullOrEmpty(page.RunningHeaderCenter))
+        {
+            var centerBlock = new TextBlock
+            {
+                Text = page.RunningHeaderCenter,
+                FontSize = 11,
+                FontFamily = new FontFamily("Frank Ruehl CLM"),
+                Foreground = Brushes.DarkGray,
+                FontWeight = FontWeights.Medium,
+                FlowDirection = FlowDirection.RightToLeft
+            };
+            centerBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double centerX = (pageWidth - centerBlock.DesiredSize.Width) / 2;
+            Canvas.SetLeft(centerBlock, centerX);
+            Canvas.SetTop(centerBlock, y);
+            GlyphCanvas.Children.Add(centerBlock);
+        }
+        
+        // חלק שמאל
+        if (!string.IsNullOrEmpty(page.RunningHeaderLeft))
+        {
+            var leftBlock = new TextBlock
+            {
+                Text = page.RunningHeaderLeft,
+                FontSize = 11,
+                FontFamily = new FontFamily("Frank Ruehl CLM"),
+                Foreground = Brushes.DarkGray,
+                FlowDirection = FlowDirection.RightToLeft
+            };
+            Canvas.SetLeft(leftBlock, margin);
+            Canvas.SetTop(leftBlock, y);
+            GlyphCanvas.Children.Add(leftBlock);
+        }
+    }
+    
+    /// <summary>
+    /// מרנדר טור טקסט אחד
+    /// </summary>
+    private double RenderTextColumn(List<string> lines, double x, double startY, 
+        double columnWidth, double lineHeight, double fontSize, bool justify)
+    {
+        if (lines == null || lines.Count == 0) return startY;
+        
+        double currentY = startY;
+        
+        for (int i = 0; i < lines.Count; i++)
+        {
+            bool isLastLine = (i == lines.Count - 1);
+            RenderJustifiedLine(lines[i], x, currentY, columnWidth, fontSize, 
+                justify && !isLastLine); // השורה האחרונה לא מיושרת
+            currentY += lineHeight;
+        }
+        
+        return currentY;
+    }
+    
+    /// <summary>
+    /// מרנדר שורה בודדת עם Justify
+    /// </summary>
+    private void RenderJustifiedLine(string text, double x, double y, 
+        double maxWidth, double fontSize, bool justify)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        
+        if (words.Length == 1 || !justify)
+        {
+            // יישור ימין בלבד
+            var tb = new TextBlock
+            {
+                Text = text,
+                FontSize = fontSize,
+                FontFamily = new FontFamily("Frank Ruehl CLM"),
+                FlowDirection = FlowDirection.RightToLeft,
+                TextAlignment = TextAlignment.Right
+            };
+            tb.Measure(new Size(maxWidth, double.PositiveInfinity));
+            Canvas.SetRight(tb, x);
+            Canvas.SetTop(tb, y);
+            GlyphCanvas.Children.Add(tb);
+            return;
+        }
+        
+        // Justify - חישוב רוחב כולל
+        double totalWordsWidth = 0;
+        foreach (var word in words)
+            totalWordsWidth += MeasureWordWidth(word, fontSize);
+        
+        double extraSpace = maxWidth - totalWordsWidth;
+        double spaceBetweenWords = extraSpace / (words.Length - 1);
+        
+        // רינדור מהימין לשמאל
+        double currentX = x;
+        
+        for (int i = 0; i < words.Length; i++)
+        {
+            var word = words[i];
+            var tb = new TextBlock
+            {
+                Text = word,
+                FontSize = fontSize,
+                FontFamily = new FontFamily("Frank Ruehl CLM"),
+                FlowDirection = FlowDirection.RightToLeft
+            };
+            
+            Canvas.SetRight(tb, currentX);
+            Canvas.SetTop(tb, y);
+            GlyphCanvas.Children.Add(tb);
+            
+            currentX += MeasureWordWidth(word, fontSize) + spaceBetweenWords;
+        }
+    }
+    
+    /// <summary>
+    /// מרנדר מדור הערות בשני טורים בפורמט run-on
+    /// </summary>
+    private double RenderFootnoteSectionTwoColumn(string title, List<string> notes,
+        double startY, double pageWidth, double margin, double columnWidth, 
+        double columnGap, double titleFontSize, double fontSize, Brush color, string markerType)
+    {
+        double currentY = startY;
+        
+        // קו מפרד
+        double centerX = pageWidth / 2;
+        DrawSeparatorLine(currentY, centerX - 50, centerX + 50, false);
+        currentY += 15;
+        
+        // כותרת מרכזית
+        var titleBlock = new TextBlock
+        {
+            Text = title,
+            FontSize = titleFontSize,
+            FontWeight = FontWeights.Bold,
+            FontFamily = new FontFamily("Frank Ruehl CLM"),
+            Foreground = color,
+            FlowDirection = FlowDirection.RightToLeft,
+            TextAlignment = TextAlignment.Center
+        };
+        titleBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double titleX = (pageWidth - titleBlock.DesiredSize.Width) / 2;
+        Canvas.SetLeft(titleBlock, titleX);
+        Canvas.SetTop(titleBlock, currentY);
+        GlyphCanvas.Children.Add(titleBlock);
+        currentY += titleFontSize * 1.8;
+        
+        // בנה טקסט run-on עם סימנים
+        var runOnText = BuildRunOnTextWithMarkers(notes, markerType);
+        
+        // חלק לשני טורים
+        int halfCount = (int)Math.Ceiling(notes.Count / 2.0);
+        var rightNotes = notes.Take(halfCount).ToList();
+        var leftNotes = notes.Skip(halfCount).ToList();
+        
+        // בנה טקסט run-on לכל טור
+        string rightText = BuildRunOnTextWithMarkers(rightNotes, markerType, 0);
+        string leftText = BuildRunOnTextWithMarkers(leftNotes, markerType, rightNotes.Count);
+        
+        // מדוד גובה כל טור
+        double rightHeight = MeasureRunOnHeight(rightText, columnWidth, fontSize);
+        double leftHeight = MeasureRunOnHeight(leftText, columnWidth, fontSize);
+        double maxHeight = Math.Max(rightHeight, leftHeight);
+        
+        // רנדר טור ימין
+        RenderRunOnColumn(rightText, margin, currentY, columnWidth, fontSize, color);
+        
+        // רנדר טור שמאל
+        RenderRunOnColumn(leftText, margin + columnWidth + columnGap, currentY, columnWidth, fontSize, color);
+        
+        return currentY + maxHeight + 10;
+    }
+    
+    /// <summary>
+    /// בונה טקסט run-on עם סימני מיקום
+    /// </summary>
+    private string BuildRunOnTextWithMarkers(List<string> notes, string markerType, int startIndex = 0)
+    {
+        if (notes == null || notes.Count == 0) return "";
+        
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < notes.Count; i++)
+        {
+            if (i > 0) sb.Append(' ');
+            
+            string marker = markerType switch
+            {
+                "א" => GetHebrewLetter(startIndex + i), // א, ב, ג...
+                "1" => (startIndex + i + 1).ToString(),  // 1, 2, 3...
+                _ => GetSymbolMarker(startIndex + i)      // *, †, ‡...
+            };
+            
+            sb.Append($"({marker}) ");
+            sb.Append(notes[i]);
+        }
+        return sb.ToString();
+    }
+    
+    /// <summary>
+    /// מחזיר אות עברית לפי אינדקס
+    /// </summary>
+    private string GetHebrewLetter(int index)
+    {
+        string[] letters = { "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י", "יא", "יב", "יג", "יד", "טו", "טז", "יז", "יח", "יט", "כ" };
+        if (index < letters.Length) return letters[index];
+        return (index + 1).ToString();
+    }
+    
+    /// <summary>
+    /// מחזיר סימן מיוחד לפי אינדקס
+    /// </summary>
+    private string GetSymbolMarker(int index)
+    {
+        string[] symbols = { "*", "†", "‡", "§", "¶", "‖", "#" };
+        return symbols[index % symbols.Length];
+    }
+    
+    /// <summary>
+    /// מודד גובה של טקסט run-on
+    /// </summary>
+    private double MeasureRunOnHeight(string text, double columnWidth, double fontSize)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        
+        var typeface = new Typeface(new FontFamily("Frank Ruehl CLM"), 
+            FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        
+        var formatted = new FormattedText(text,
+            System.Globalization.CultureInfo.GetCultureInfo("he-IL"),
+            FlowDirection.RightToLeft,
+            typeface,
+            fontSize,
+            Brushes.Black,
+            1.0);
+        
+        formatted.MaxTextWidth = columnWidth;
+        formatted.MaxTextHeight = double.MaxValue;
+        
+        return formatted.Height;
+    }
+    
+    /// <summary>
+    /// מרנדר טור run-on
+    /// </summary>
+    private void RenderRunOnColumn(string text, double x, double y, 
+        double columnWidth, double fontSize, Brush color)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        
+        var tb = new TextBlock
+        {
+            Text = text,
+            FontSize = fontSize,
+            FontFamily = new FontFamily("Frank Ruehl CLM"),
+            Foreground = color,
+            FlowDirection = FlowDirection.RightToLeft,
+            TextAlignment = TextAlignment.Justify,
+            TextWrapping = TextWrapping.Wrap,
+            Width = columnWidth
+        };
+        
+        Canvas.SetRight(tb, x);
+        Canvas.SetTop(tb, y);
+        GlyphCanvas.Children.Add(tb);
+    }
+    
+    /// <summary>
+    /// מודד רוחב מילה בודדת (ללא ניקוד)
+    /// </summary>
+    private double MeasureWordWidth(string word, double fontSize)
+    {
+        // הסר ניקוד למדידה
+        string clean = new string(word.Where(c => c < '\u05B0' || c > '\u05C7').ToArray());
+        
+        var formattedText = new FormattedText(clean,
+            System.Globalization.CultureInfo.CurrentCulture,
+            FlowDirection.RightToLeft,
+            new Typeface("Frank Ruehl CLM"),
+            fontSize,
+            Brushes.Black,
+            1.0);
+        
+        return formattedText.WidthIncludingTrailingWhitespace;
     }
     
     /// <summary>

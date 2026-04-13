@@ -16,33 +16,77 @@ Action Descriptions: When describing an action you are about to perform (e.g., "
 
 Error handling: Even when reporting a failure (such as "failed to import"), explain the error and your next steps in Hebrew.
 
-In addition, I don't understand programming at all, so there are no exceptions: Under no circumstances should you provide explanations, comments, or chat responses in a programming language or any language that is not understandable to a person who has no programming background, but rather adapt the explanations to understandable and simple language, as if you were explaining to your client that he is not currently interested in programming, but only in the finished product.
+In addition, I don't understand programming at all, so there are no exceptions: Under no circumstances should you provide explanations, comments, or chat responses in a programming language or any language that is not understandable to a person who has no programming background, but rather adapt the explanations to understandable and simple language, as if you were explaining to your client that he is not currently interested in 
+
+programming, but only in the finished product.
 
 I want you to handle the Git sync. Every time you finish a task, push it to GitHub automatically.
 
-UI/UX & Layout Guidelines for Complex Multi-Column Layouts
-Project Structure & Styling Rules:
+Traditional Scholarly Page Layout — Rules (3-Commentary Edition)
+Overview
+This layout system renders a main text with three parallel commentary systems, where all four content layers are typeset together on a single page. The page is fully calculated: the main text and all its associated notes from the three systems always appear together without overflow to the next page.
 
-Multi-Layered Layout: The layout must support a hierarchical structure with at least three distinct content areas on a single page:
+Page Structure (Top to Bottom)
+Page Number: Positioned top-left (or top-right on verso pages). Small and muted.
 
-Main Header/Primary Content: Positioned at the top, spans the full width or a significant portion.
+Running Header: A single line spanning full width. Contains metadata (book, section, position) separated by delimiters like · or |.
 
-Secondary Content (Level 1): Two-column layout immediately below the primary section.
+Main Text Block: Divided into two equal columns. Full vocalization (nikud). Contains three types of inline reference markers (A, B, and C).
 
-Tertiary Content (Level 2): High-density, multi-column layout (at least 2 columns) at the bottom section.
+Commentary System 1: - Header: Centered, bold title.
 
-Typography Hierarchy:
+Body: 2 columns, justified, continuous text flow (no line breaks between notes).
 
-Primary Text: Larger font size, increased line-height, bold headers.
+Commentary System 2:
 
-Secondary Text: Medium density, clear separation from primary text using horizontal dividers or padding.
+Header: Centered, bold title below System 1 body.
 
-Tertiary Text: Smallest font size, maximum information density, using justified alignment to maintain a "classic" book-like appearance.
+Body: 2 columns, justified, continuous text flow.
 
-Visual Separators: Use clean, subtle borders or spacing to define the boundaries between the different text blocks (Main, Side-notes, and Footnotes).
+Commentary System 3:
 
-Responsive Alignment: Ensure that when text flows between columns, the vertical rhythm is maintained across the page.
+Header: Centered, bold title below System 2 body.
 
-Text Justification: All text blocks should be perfectly justified (left and right) to create a structured, professional "grid" look.
+Body: 2 columns, justified, continuous text flow.
 
-Container Logic: Each section (Main, Sub-section 1, Sub-section 2) should be encapsulated in its own semantic container to allow independent scrolling or formatting if necessary.
+Typography & Styling Specifications
+Running Header: Size: 10–11px | Weight: Regular | Alignment: Left or spread.
+
+Main Text Block: Size: 14–16px | Weight: Regular | Vocalization: Full (Nikud) | Layout: 2 columns, Justified.
+
+Commentary Headers (1, 2, & 3): Size: 13px | Weight: Bold | Alignment: Centered.
+
+Commentary Bodies (1, 2, & 3): Size: 11–12px | Weight: Regular | Vocalization: Partial/None | Layout: 2 columns, Justified.
+
+Gutter / Column Gap: 1em consistent across all blocks.
+
+Direction: Strict RTL (Right-to-Left) for all elements.
+
+Page Calculation — Critical Constraint
+The engine must treat the page as a single calculation unit:
+
+Identify main-text lines and their corresponding notes for all 3 systems.
+
+Greedy Fit Algorithm: If the total height of (Main Text + System 1 + System 2 + System 3) exceeds page height, reduce Main Text lines one by one until all associated notes fit on the current page.
+
+No Overflow: Notes must never move to the next page without their corresponding main text anchor.
+
+Reference Marker System
+System 1 Markers: Hebrew letters (א, ב, ג).
+
+System 2 Markers: Numerals (1, 2, 3).
+
+System 3 Markers: Symbols (*, †, ‡) or distinct font style.
+
+In-Text: Superscript, reduced size.
+
+In-Commentary: Inline at start of note, bolded, serves as the only separator between notes.
+
+Implementation Guidelines for AI
+CSS Layout: Use column-count: 2 for multi-column blocks. Do not use flex/float for text columns.
+
+RTL Support: Set direction: rtl on the root container.
+
+Zero Whitespace: Commentary notes must have no margins, padding, or display: block between them. They must flow like a single paragraph.
+
+Bidirectional Links: Use unique IDs (ref-a1, note-a1, etc.) to ensure markers and notes are correctly paired during the layout calculation.

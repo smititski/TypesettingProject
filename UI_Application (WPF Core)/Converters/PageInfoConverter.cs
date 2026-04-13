@@ -14,11 +14,11 @@ namespace UI_Application.Converters
         {
             if (value is PageModel page)
             {
-                int mainChars = page.MainContent?.Length ?? 0;
-                int footnoteACount = page.FootnoteA?.Count ?? 0;
-                int footnoteBCount = page.FootnoteB?.Count ?? 0;
+                int mainLines = page.AllMainLines?.Count ?? 0;
+                int footnoteACount = page.AllFootnotesA?.Count ?? 0;
+                int footnoteBCount = page.AllFootnotesB?.Count ?? 0;
                 
-                return $"עמוד {page.PageNumber}: {mainChars} תווים | הערות א': {footnoteACount} | הערות ב': {footnoteBCount}";
+                return $"עמוד {page.PageNumber}: {mainLines} שורות | הערות א': {footnoteACount} | הערות ב': {footnoteBCount}";
             }
             
             return "לא נבחר עמוד";

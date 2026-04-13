@@ -72,6 +72,9 @@ cmake-build-*/
 Thumbs.db
 desktop.ini
 
+# CMake installation folder (large, shouldn't be in repo)
+cmake-4.3.1/
+
 # Misc
 *.tmp
 *.temp

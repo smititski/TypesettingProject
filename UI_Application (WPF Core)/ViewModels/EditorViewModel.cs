@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
@@ -181,6 +182,7 @@ public class EditorViewModel : INotifyPropertyChanged
     /// Command to execute typesetting layout.
     /// </summary>
     public ICommand LayoutCommand { get; }
+    public ICommand ColumnLayoutCommand { get; }
 
     public EditorViewModel()
     {
@@ -196,6 +198,105 @@ public class EditorViewModel : INotifyPropertyChanged
         _paginationEngine = new PaginationEngine(pageWidth: 800, pageHeight: 600);
         
         LayoutCommand = new RelayCommand(ExecuteLayout);
+        ColumnLayoutCommand = new RelayCommand(ExecuteColumnLayout);
+    }
+    
+    /// <summary>
+    /// מבצע עימוד דו-טורי חדש באמצעות ColumnLayoutEngine
+    /// </summary>
+    private void ExecuteColumnLayout()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(Text))
+            {
+                StatusMessage = "אין טקסט לעימוד";
+                return;
+            }
+            
+            StatusMessage = "מבצע עימוד דו-טורי...";
+            
+            // חלץ טקסט והערות
+            var (main, fA, fB, fC) = TextHelper.ExtractContentAndFootnotes(Text);
+            
+            // צור ParsedDocument
+            var doc = CreateParsedDocument(main, fA, fB, fC);
+            
+            // השתמש במנוע העימוד החדש (זה ידרוש Visual, נשתמש ב-null לעכשיו)
+            // בפועל, זה ייקרא מה-MainWindow
+            var window = Application.Current.MainWindow;
+            if (window == null)
+            {
+                StatusMessage = "שגיאה: לא ניתן למצוא חלון ראשי";
+                return;
+            }
+            
+            var engine = new ColumnLayoutEngine(window);
+            var pages = engine.Paginate(doc);
+            
+            // עדכן את האוסף
+            Pages.Clear();
+            foreach (var page in pages)
+            {
+                Pages.Add(page);
+            }
+            
+            // הצג את העמוד הראשון
+            CurrentPage = Pages.FirstOrDefault();
+            
+            StatusMessage = $"עימוד דו-טורי הושלם: {pages.Count} עמודים";
+            
+            SaveToDatabase();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"שגיאה: {ex.Message}";
+            MessageBox.Show($"שגיאה בעימוד דו-טורי: {ex.GetType().Name}: {ex.Message}", "שגיאה", 
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+    
+    /// <summary>
+    /// יוצר ParsedDocument מטקסט גולמי
+    /// </summary>
+    private ParsedDocument CreateParsedDocument(string main, List<string> fA, List<string> fB, List<string> fC)
+    {
+        var doc = new ParsedDocument();
+        
+        // חלק את הטקסט לשורות
+        doc.MainLines = main.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList();
+        
+        // מלא מיקומי פסוקים (פשוט לעכשיו)
+        for (int i = 0; i < doc.MainLines.Count; i++)
+        {
+            doc.LineToVerseLocation[i] = new VerseLocation
+            {
+                BookName = "ספר",
+                Chapter = 1,
+                Verse = i + 1
+            };
+        }
+        
+        // שמור את ההערות
+        doc.AllFootnotesA = fA;
+        doc.AllFootnotesB = fB;
+        doc.AllFootnotesC = fC;
+        
+        // מלא מיפוי הערות (פשוט — כל הערה שייכת לשורה התואמת)
+        for (int i = 0; i < fA.Count && i < doc.MainLines.Count; i++)
+        {
+            doc.FootnoteALocations[i] = new List<int> { i };
+        }
+        for (int i = 0; i < fB.Count && i < doc.MainLines.Count; i++)
+        {
+            doc.FootnoteBLocations[i] = new List<int> { i };
+        }
+        for (int i = 0; i < fC.Count && i < doc.MainLines.Count; i++)
+        {
+            doc.FootnoteCLocations[i] = new List<int> { i };
+        }
+        
+        return doc;
     }
 
     /// <summary>
@@ -237,10 +338,10 @@ public class EditorViewModel : INotifyPropertyChanged
             var current = Pages.FirstOrDefault();
             if (current != null)
             {
-                var footnotesADetail = string.Join("\n---\n", current.FootnoteA.Select((f, i) => $"הערה א' {i+1}: {f}"));
-                var footnotesBDetail = string.Join("\n---\n", current.FootnoteB.Select((f, i) => $"הערה ב' {i+1}: {f}"));
-                var footnotesCDetail = string.Join("\n---\n", current.FootnoteC.Select((f, i) => $"הערה ג' {i+1}: {f}"));
-                MessageBox.Show($"הערות א' ({current.FootnoteA.Count}):\n{footnotesADetail}\n\nהערות ב' ({current.FootnoteB.Count}):\n{footnotesBDetail}\n\nהערות ג' ({current.FootnoteC.Count}):\n{footnotesCDetail}", 
+                var footnotesADetail = string.Join("\n---\n", current.AllFootnotesA?.Select((f, i) => $"הערה א' {i+1}: {f}") ?? Enumerable.Empty<string>());
+                var footnotesBDetail = string.Join("\n---\n", current.AllFootnotesB?.Select((f, i) => $"הערה ב' {i+1}: {f}") ?? Enumerable.Empty<string>());
+                var footnotesCDetail = string.Join("\n---\n", current.AllFootnotesC?.Select((f, i) => $"הערה ג' {i+1}: {f}") ?? Enumerable.Empty<string>());
+                MessageBox.Show($"הערות א' ({current.AllFootnotesA?.Count ?? 0}):\n{footnotesADetail}\n\nהערות ב' ({current.AllFootnotesB?.Count ?? 0}):\n{footnotesBDetail}\n\nהערות ג' ({current.AllFootnotesC?.Count ?? 0}):\n{footnotesCDetail}", 
                     "הערות שנחלצו", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             
@@ -259,19 +360,22 @@ public class EditorViewModel : INotifyPropertyChanged
     /// </summary>
     private void LoadGlyphsForPage(PageModel page)
     {
-        if (string.IsNullOrEmpty(page?.MainContent))
+        if (page?.AllMainLines == null || page.AllMainLines.Count == 0)
         {
             Glyphs.Clear();
             return;
         }
 
+        // объединить все строки для вызова C++ engine
+        string mainContent = string.Join("\n", page.AllMainLines);
+        
         // Allocate buffer for glyphs
-        int maxGlyphs = page.MainContent.Length;
+        int maxGlyphs = mainContent.Length;
         GlyphInfo[] glyphArray = new GlyphInfo[maxGlyphs];
         int count = maxGlyphs;
 
         // Call the native C++ engine
-        NativeMethods.LayoutText(page.MainContent, glyphArray, ref count);
+        NativeMethods.LayoutText(mainContent, glyphArray, ref count);
         _lastGlyphCount = count;
 
         // Update the observable collection

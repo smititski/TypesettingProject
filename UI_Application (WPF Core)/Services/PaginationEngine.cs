@@ -58,7 +58,7 @@ namespace UI_Application.Services
                 if (currentPage.RemainingHeight >= lineHeight)
                 {
                     // הוספת שורה לעמוד הנוכחי
-                    currentPage.MainContent += (string.IsNullOrEmpty(currentPage.MainContent) ? "" : "\n") + line;
+                    currentPage.AllMainLines.Add(line);
                     currentPage.ReserveHeight(lineHeight);
 
                     // הוספת הערות שוליים מקושרות לשורה זו
@@ -75,7 +75,7 @@ namespace UI_Application.Services
             }
 
             // הוספת העמוד האחרון אם לא ריק
-            if (!string.IsNullOrEmpty(currentPage.MainContent))
+            if (currentPage.AllMainLines.Count > 0)
             {
                 pages.Add(currentPage);
             }
@@ -93,11 +93,10 @@ namespace UI_Application.Services
                 PageNumber = pageNumber,
                 PageWidth = _pageWidth,
                 PageHeight = _pageHeight,
-                RemainingHeight = _pageHeight - 50, // שמירת שוליים עליון
-                MainContent = string.Empty,
-                FootnoteA = new List<string>(),
-                FootnoteB = new List<string>(),
-                FootnoteC = new List<string>()
+                AllMainLines = new List<string>(),
+                AllFootnotesA = new List<string>(),
+                AllFootnotesB = new List<string>(),
+                AllFootnotesC = new List<string>()
             };
         }
 
@@ -131,21 +130,21 @@ namespace UI_Application.Services
             // הוספת כל הערות א' שנותרו (כולן לעמוד זה)
             while (footnoteAIndex < footnotesA.Count)
             {
-                page.AddFootnoteA(footnotesA[footnoteAIndex]);
+                page.AllFootnotesA.Add(footnotesA[footnoteAIndex]);
                 footnoteAIndex++;
             }
 
             // הוספת כל הערות ב' שנותרו
             while (footnoteBIndex < footnotesB.Count)
             {
-                page.AddFootnoteB(footnotesB[footnoteBIndex]);
+                page.AllFootnotesB.Add(footnotesB[footnoteBIndex]);
                 footnoteBIndex++;
             }
 
             // הוספת כל הערות ג' שנותרו
             while (footnoteCIndex < footnotesC.Count)
             {
-                page.AddFootnoteC(footnotesC[footnoteCIndex]);
+                page.AllFootnotesC.Add(footnotesC[footnoteCIndex]);
                 footnoteCIndex++;
             }
         }
@@ -158,10 +157,10 @@ namespace UI_Application.Services
             if (pages.Count == 0)
                 return "אין עמודים";
 
-            int totalChars = pages.Sum(p => p.MainContent?.Length ?? 0);
-            int totalFootnotesA = pages.Sum(p => p.FootnoteA.Count);
-            int totalFootnotesB = pages.Sum(p => p.FootnoteB.Count);
-            int totalFootnotesC = pages.Sum(p => p.FootnoteC.Count);
+            int totalChars = pages.Sum(p => p.AllMainLines?.Count ?? 0);
+            int totalFootnotesA = pages.Sum(p => p.AllFootnotesA?.Count ?? 0);
+            int totalFootnotesB = pages.Sum(p => p.AllFootnotesB?.Count ?? 0);
+            int totalFootnotesC = pages.Sum(p => p.AllFootnotesC?.Count ?? 0);
 
             return $"עמודים: {pages.Count}, תווים: {totalChars}, " +
                    $"הערות א': {totalFootnotesA}, הערות ב': {totalFootnotesB}, הערות ג': {totalFootnotesC}";
