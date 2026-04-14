@@ -1,68 +1,63 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Windows;
-using System.Windows.Media;
+using UI_Application.Constants;
 using UI_Application.Models;
 
 namespace UI_Application.Services
 {
     /// <summary>
-    /// מנוע עימוד דו-טורי עם אלגוריתם Greedy Fit
+    /// מנוע עימוד דו-טורי עם אלגוריתם Greedy Fit — גרסה חדשה
     /// Traditional Scholarly Page Layout — 3-Commentary Edition
     /// </summary>
     public class ColumnLayoutEngine
     {
-        private readonly Visual _visual;
-        private readonly double _pixelsPerDip;
-        private readonly FontFamily _mainFont;
-        private readonly FontFamily _footnoteFont;
+        private readonly TextParser _textParser;
+        private readonly HeightCalculator _heightCalc;
+        private ParsedDocument _doc = null!;
         
-        // קבועים לחישובי גובה
-        private const double MAIN_LINE_HEIGHT_MULTIPLIER = 1.5;
-        private const double FOOTNOTE_LINE_HEIGHT_MULTIPLIER = 1.4;
-        private const double SAFETY_BUFFER = 0.93; // 93% ריפוד ביטחון
+        // רשימות מוכללות (wrapped) לפי רוחב הטור
+        private List<string> _mainWrapped = new();
+        private List<string> _footnotesA_Wrapped = new();
+        private List<string> _footnotesB_Wrapped = new();
+        private List<string> _footnotesC_Wrapped = new();
         
-        /// <summary>
-        /// יוצר מופע חדש של מנוע העימוד
-        /// </summary>
-        public ColumnLayoutEngine(Visual visual)
+        public ColumnLayoutEngine(TextParser textParser)
         {
-            _visual = visual;
-            _pixelsPerDip = VisualTreeHelper.GetDpi(visual).PixelsPerDip;
-            _mainFont = new FontFamily("Frank Ruehl CLM");
-            _footnoteFont = new FontFamily("Frank Ruehl CLM");
+            _textParser = textParser;
+            _heightCalc = new HeightCalculator(textParser);
         }
         
         /// <summary>
-        /// מנתח מסמך ומחלק אותו לעמודים דו-טוריים
+        /// העימוד הראשי — שלב 4: Greedy Fit Algorithm
         /// </summary>
         public List<PageModel> Paginate(ParsedDocument document)
         {
+            _doc = document;
+            
+            // שלב 1: ריווח כל הטקסט לרוחב הטור
+            PreWrapAllText();
+            
             var pages = new List<PageModel>();
             int currentLine = 0;
             int pageNumber = 1;
             
-            while (currentLine < document.MainLines.Count)
+            // שלב 2: לולאת עמודים
+            while (currentLine < _mainWrapped.Count)
             {
-                // נסה ליצור עמוד החל מהשורה הנוכחית
-                var page = TryFitPage(document, currentLine, pageNumber);
+                var page = TryFitPage(currentLine, pageNumber);
                 
-                // אם לא הצלחנו לשים אף שורה — חייבים לשים לפחות אחת
-                if (page.AllMainLines.Count == 0 && currentLine < document.MainLines.Count)
+                // אם לא הצלחנו — לפחות שורה אחת
+                if (page.MainRight.Count == 0 && page.MainLeft.Count == 0)
                 {
-                    page = ForceSingleLinePage(document, currentLine, pageNumber);
+                    page = ForceSingleLinePage(currentLine, pageNumber);
                 }
                 
-                // הגדר כותרת רצה
-                SetRunningHeader(page, document, currentLine);
-                
-                // חלק תוכן לשני טורים
-                DistributeToColumns(page);
+                // שלב 3: כותרת רצה
+                SetRunningHeader(page, currentLine);
                 
                 pages.Add(page);
-                currentLine += page.AllMainLines.Count;
+                currentLine += page.MainRight.Count + page.MainLeft.Count;
                 pageNumber++;
             }
             
@@ -70,66 +65,112 @@ namespace UI_Application.Services
         }
         
         /// <summary>
-        /// מנסה ליצור עמוד עם כמה שיותר שורות שמתאימות
-        /// Greedy Fit Algorithm
+        /// שלב 1: ריווח כל הטקסט לרוחב הטור
         /// </summary>
-        private PageModel TryFitPage(ParsedDocument doc, int startLine, int pageNumber)
+        private void PreWrapAllText()
         {
-            var page = new PageModel { PageNumber = pageNumber };
-            double availableHeight = page.AvailableHeight * SAFETY_BUFFER;
+            double columnWidth = LayoutConstants.COLUMN_WIDTH;
             
+            // טקסט ראשי
+            _mainWrapped = _textParser.WrapLinesToWidth(
+                _doc.MainLines, 
+                columnWidth, 
+                LayoutConstants.FONT_SIZE_MAIN, 
+                LayoutConstants.FONT_MAIN
+            );
+            
+            // הערות A
+            _footnotesA_Wrapped = _textParser.WrapLinesToWidth(
+                _doc.FootnotesA,
+                columnWidth,
+                LayoutConstants.FONT_SIZE_FOOTNOTE_A,
+                LayoutConstants.FONT_MAIN
+            );
+            
+            // הערות B
+            _footnotesB_Wrapped = _textParser.WrapLinesToWidth(
+                _doc.FootnotesB,
+                columnWidth,
+                LayoutConstants.FONT_SIZE_FOOTNOTE_B,
+                LayoutConstants.FONT_MAIN
+            );
+            
+            // הערות C
+            _footnotesC_Wrapped = _textParser.WrapLinesToWidth(
+                _doc.FootnotesC,
+                columnWidth,
+                LayoutConstants.FONT_SIZE_FOOTNOTE_C,
+                LayoutConstants.FONT_MAIN
+            );
+        }
+        
+        /// <summary>
+        /// מנסה ליצור עמוד עם כמה שיותר שורות שמתאימות
+        /// Greedy Fit Algorithm — לפי הדרכת קלוד
+        /// </summary>
+        private PageModel TryFitPage(int startLine, int pageNumber)
+        {
+            var page = new PageModel { 
+                PageNumber = pageNumber,
+                PageWidth = LayoutConstants.PAGE_WIDTH_PX,
+                PageHeight = LayoutConstants.PAGE_HEIGHT_PX,
+                ColumnWidth = LayoutConstants.COLUMN_WIDTH,
+                ColumnGap = LayoutConstants.COLUMN_GAP,
+                MarginOuter = LayoutConstants.MARGIN_OUTER,
+                MarginInner = LayoutConstants.MARGIN_INNER
+            };
+            
+            // שלב a: זיהוי הערות הרלוונטיות לטווח זה
+            var footnotesA = GetFootnotesForRange(startLine, _doc.FootnotesA, LayoutConstants.REF_PREFIX_A);
+            var footnotesB = GetFootnotesForRange(startLine, _doc.FootnotesB, LayoutConstants.REF_PREFIX_B);
+            var footnotesC = GetFootnotesForRange(startLine, _doc.FootnotesC, LayoutConstants.REF_PREFIX_C);
+            
+            // שלב b: חישוב גובה הערות
+            double fnA_Height = _heightCalc.MeasureFootnoteSectionHeight(
+                footnotesA, LayoutConstants.FONT_SIZE_FOOTNOTE_A, LayoutConstants.COLUMN_WIDTH);
+            double fnB_Height = _heightCalc.MeasureFootnoteSectionHeight(
+                footnotesB, LayoutConstants.FONT_SIZE_FOOTNOTE_B, LayoutConstants.COLUMN_WIDTH);
+            double fnC_Height = _heightCalc.MeasureFootnoteSectionHeight(
+                footnotesC, LayoutConstants.FONT_SIZE_FOOTNOTE_C, LayoutConstants.COLUMN_WIDTH);
+            
+            // עדכון הגבהים ב-page
+            page.FootnoteA_Height = fnA_Height;
+            page.FootnoteB_Height = fnB_Height;
+            page.FootnoteC_Height = fnC_Height;
+            
+            // שלב c: חישוב גובה זמין לטקסט ראשי
+            double availableMainHeight = _heightCalc.AvailableMainHeight(page);
+            
+            // שלב d: Greedy Fit — התאמה חמדנית
+            int maxLines = _heightCalc.HowManyLinesFit(
+                availableMainHeight, 
+                LayoutConstants.FONT_SIZE_MAIN, 
+                LayoutConstants.LINE_HEIGHT_MAIN
+            );
+            
+            // בדיקה: האם שורות + הערות נכנסים?
             int bestFit = 0;
-            
-            // נסה להוסיף שורות אחת-אחת עד שנגמר הגובה
-            for (int count = 1; startLine + count <= doc.MainLines.Count; count++)
+            for (int tryLines = maxLines; tryLines >= 1; tryLines--)
             {
-                // אסוף הערות השייכות לטווח שורות זה
-                var footnotesA = GetFootnotesForRange(doc, startLine, count, doc.FootnoteALocations);
-                var footnotesB = GetFootnotesForRange(doc, startLine, count, doc.FootnoteBLocations);
-                var footnotesC = GetFootnotesForRange(doc, startLine, count, doc.FootnoteCLocations);
+                var tryLinesList = _mainWrapped.Skip(startLine).Take(tryLines).ToList();
+                double mainHeight = _heightCalc.CalculateMainHeight(tryLinesList);
+                double totalHeight = mainHeight + fnA_Height + fnB_Height + fnC_Height;
                 
-                // בדוק שלא חותכים הערה באמצע "בלוק" (פסוק)
-                if (count > 1 && IsCuttingMidVerse(doc, startLine, count))
-                {
-                    continue; // נסה להוסיף עוד שורה
-                }
+                // הוספת גובה כותרות וקווי הפרדה
+                totalHeight += LayoutConstants.RUNNING_HEADER_HEIGHT;
+                if (fnA_Height > 0) totalHeight += LayoutConstants.FOOTNOTE_SECTION_TITLE_HEIGHT + 2;
+                if (fnB_Height > 0) totalHeight += LayoutConstants.FOOTNOTE_SECTION_TITLE_HEIGHT + 2;
+                if (fnC_Height > 0) totalHeight += LayoutConstants.FOOTNOTE_SECTION_TITLE_HEIGHT + 2;
                 
-                // חשב גובה כולל
-                double totalHeight = CalculateTotalHeight(
-                    count, 
-                    footnotesA.Count, 
-                    footnotesB.Count, 
-                    footnotesC.Count,
-                    page.ColumnWidth);
-                
-                if (totalHeight <= availableHeight)
+                if (totalHeight <= LayoutConstants.PAGE_HEIGHT_PX - LayoutConstants.MARGIN_TOP - LayoutConstants.MARGIN_BOTTOM)
                 {
-                    bestFit = count;
-                }
-                else
-                {
-                    break; // חרגנו מגובה העמוד
+                    bestFit = tryLines;
+                    break;
                 }
             }
             
-            // אם לא מצאנו התאמה — נסה בלי הבדיקה על חיתוך פסוק
-            if (bestFit == 0)
-            {
-                for (int count = 1; startLine + count <= doc.MainLines.Count && count <= 3; count++)
-                {
-                    var footnotesA = GetFootnotesForRange(doc, startLine, count, doc.FootnoteALocations);
-                    var footnotesB = GetFootnotesForRange(doc, startLine, count, doc.FootnoteBLocations);
-                    var footnotesC = GetFootnotesForRange(doc, startLine, count, doc.FootnoteCLocations);
-                    
-                    double totalHeight = CalculateTotalHeight(
-                        count, 
-                        footnotesA.Count, 
-                        footnotesB.Count, 
-                        footnotesC.Count,
-                        page.ColumnWidth);
-                    
-                    if (totalHeight <= availableHeight)
-                    {
+            // אם לא נמצאה התאמה — לפחות שורה אחת
+            if (bestFit == 0) bestFit = 1;
                         bestFit = count;
                         break;
                     }
@@ -161,61 +202,81 @@ namespace UI_Application.Services
         /// <summary>
         /// יוצר עמוד עם שורה אחת בכל מקרה (למקרי קצה)
         /// </summary>
-        private PageModel ForceSingleLinePage(ParsedDocument doc, int lineIndex, int pageNumber)
+        private PageModel ForceSingleLinePage(int lineIndex, int pageNumber)
         {
-            var page = new PageModel { PageNumber = pageNumber };
-            page.AllMainLines = new List<string> { doc.MainLines[lineIndex] };
-            page.AllFootnotesA = GetFootnotesForRange(doc, lineIndex, 1, doc.FootnoteALocations);
-            page.AllFootnotesB = GetFootnotesForRange(doc, lineIndex, 1, doc.FootnoteBLocations);
-            page.AllFootnotesC = GetFootnotesForRange(doc, lineIndex, 1, doc.FootnoteCLocations);
+            var page = new PageModel 
+            { 
+                PageNumber = pageNumber,
+                PageWidth = LayoutConstants.PAGE_WIDTH_PX,
+                PageHeight = LayoutConstants.PAGE_HEIGHT_PX,
+                ColumnWidth = LayoutConstants.COLUMN_WIDTH,
+                ColumnGap = LayoutConstants.COLUMN_GAP,
+                MarginOuter = LayoutConstants.MARGIN_OUTER,
+                MarginInner = LayoutConstants.MARGIN_INNER
+            };
             
-            if (doc.LineToVerseLocation.ContainsKey(lineIndex))
+            // שורה אחת בטור ימין
+            if (lineIndex < _mainWrapped.Count)
             {
-                page.LineToVerseLocation[0] = doc.LineToVerseLocation[lineIndex];
+                page.MainRight = new List<string> { _mainWrapped[lineIndex] };
             }
             
             return page;
         }
         
         /// <summary>
-        /// חלק את התוכן לשני טורים (ימין ושמאל)
+        /// קובע כותרת רצה לעמוד
         /// </summary>
-        private void DistributeToColumns(PageModel page)
+        private void SetRunningHeader(PageModel page, int startLine)
         {
-            int totalLines = page.AllMainLines.Count;
+            // ברירת מחדל — שם הספר והפרשה
+            page.RunningHeaderRight = $"{_doc.BookName}";
+            page.RunningHeaderCenter = _doc.ParashaName;
+            page.RunningHeaderLeft = $"עמוד {page.PageNumber}";
+            
+            // אם יש מספיק שורות — עדכן לפי תוכן
+            if (startLine < _mainWrapped.Count)
+            {
+                // כאן אפשר להוסיף לוגיקה מתקדמת לזיהוי פרק/פסוק
+                // כרגע משתמשים בשם הפרשה כמרכז
+            }
+        }
+        
+        /// <summary>
+        /// חלק את התוכן לשני טורים (ימין ושמאל) — עודכן למבנה החדש
+        /// </summary>
+        private void DistributeToColumns(PageModel page, List<string> allLines)
+        {
+            int totalLines = allLines.Count;
             if (totalLines == 0) return;
             
             // חלק שווה: חצי לימין, חצי לשמאל
             int rightCount = (int)Math.Ceiling(totalLines / 2.0);
             int leftCount = totalLines - rightCount;
             
-            page.MainContentColumnRight = page.AllMainLines.Take(rightCount).ToList();
-            page.MainContentColumnLeft = page.AllMainLines.Skip(rightCount).Take(leftCount).ToList();
-            
-            // חלק הערות מערכת 1
-            DistributeFootnotes(page.AllFootnotesA, page.FootnoteAColumnRight, page.FootnoteAColumnLeft);
-            
-            // חלק הערות מערכת 2
-            DistributeFootnotes(page.AllFootnotesB, page.FootnoteBColumnRight, page.FootnoteBColumnLeft);
-            
-            // חלק הערות מערכת 3
-            DistributeFootnotes(page.AllFootnotesC, page.FootnoteCColumnRight, page.FootnoteCColumnLeft);
+            page.MainRight = allLines.Take(rightCount).ToList();
+            page.MainLeft = allLines.Skip(rightCount).Take(leftCount).ToList();
         }
         
         /// <summary>
-        /// מחלק רשימת הערות לשני טורים
+        /// מחלק רשימת הערות לשני טורים — עודכן למבנה החדש
         /// </summary>
-        private void DistributeFootnotes(List<string> allNotes, List<string> rightColumn, List<string> leftColumn)
+        private void DistributeFootnotesToPage(PageModel page, List<string> footnotesA, List<string> footnotesB, List<string> footnotesC)
         {
-            rightColumn.Clear();
-            leftColumn.Clear();
+            // הערות A
+            int fnA_RightCount = (footnotesA.Count + 1) / 2;
+            page.FootnotesA_Right = footnotesA.Take(fnA_RightCount).ToList();
+            page.FootnotesA_Left = footnotesA.Skip(fnA_RightCount).ToList();
             
-            if (allNotes.Count == 0) return;
+            // הערות B
+            int fnB_RightCount = (footnotesB.Count + 1) / 2;
+            page.FootnotesB_Right = footnotesB.Take(fnB_RightCount).ToList();
+            page.FootnotesB_Left = footnotesB.Skip(fnB_RightCount).ToList();
             
-            int rightCount = (int)Math.Ceiling(allNotes.Count / 2.0);
-            
-            rightColumn.AddRange(allNotes.Take(rightCount));
-            leftColumn.AddRange(allNotes.Skip(rightCount));
+            // הערות C
+            int fnC_RightCount = (footnotesC.Count + 1) / 2;
+            page.FootnotesC_Right = footnotesC.Take(fnC_RightCount).ToList();
+            page.FootnotesC_Left = footnotesC.Skip(fnC_RightCount).ToList();
         }
         
         /// <summary>
@@ -256,13 +317,19 @@ namespace UI_Application.Services
         }
         
         /// <summary>
-        /// מודד גובה הערות בפורמט run-on
+        /// מודד גובה הערות בפורמט run-on — מדידה מדויקת באמצעות FormattedText
         /// </summary>
-        private double MeasureFootnoteHeight(int footnoteCount, double columnWidth)
+        private double MeasureFootnoteHeight(int footnoteCount, double columnWidth, List<string> footnotes = null)
         {
             if (footnoteCount == 0) return 0;
             
-            // הערכה: 2 הערות = שורה אחת, מחולק לשני טורים
+            // אם יש לנו את הטקסט האמיתי, נמדוד אותו
+            if (footnotes != null && footnotes.Count > 0)
+            {
+                return MeasureRunOnFootnotesHeight(footnotes, columnWidth, 11);
+            }
+            
+            // הערכה חלופית: 2 הערות = שורה אחת, מחולק לשני טורים
             double linesPerColumn = Math.Ceiling(footnoteCount / 4.0);
             return linesPerColumn * 13 * FOOTNOTE_LINE_HEIGHT_MULTIPLIER;
         }
@@ -410,12 +477,24 @@ namespace UI_Application.Services
         }
         
         /// <summary>
-        /// מוצא הערה לפי אינדקס
+        /// מוצא הערה לפי אינדקס — מחפש בכל מערכות ההערות
         /// </summary>
         private string GetFootnoteByIndex(ParsedDocument doc, int index)
         {
-            // זהו מיפוי פשוט — במימוש אמיתי צריך לאחסן את כל ההערות במקום אחד
-            // כרגע נניח שהאינדקס מתאים למיקום ברשימה
+            // חפש בהערות מערכת 1
+            if (index < doc.AllFootnotesA.Count)
+                return doc.AllFootnotesA[index];
+            
+            // התאם את האינדקס להערות מערכת 2
+            int adjustedIndex = index - doc.AllFootnotesA.Count;
+            if (adjustedIndex >= 0 && adjustedIndex < doc.AllFootnotesB.Count)
+                return doc.AllFootnotesB[adjustedIndex];
+            
+            // התאם את האינדקס להערות מערכת 3
+            adjustedIndex = index - doc.AllFootnotesA.Count - doc.AllFootnotesB.Count;
+            if (adjustedIndex >= 0 && adjustedIndex < doc.AllFootnotesC.Count)
+                return doc.AllFootnotesC[adjustedIndex];
+            
             return $"הערה מספר {index}";
         }
         
